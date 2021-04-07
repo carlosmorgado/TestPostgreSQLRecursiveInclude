@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;
 using Xunit;
@@ -27,6 +28,11 @@ namespace TestPostgreSQLRecursiveInclude.Tests
                 Id = Guid.NewGuid()
             };
 
+            ctx.TestClasses.Add(testClassParent);
+            ctx.TestClasses.Add(testClass);
+            ctx.TestClasses.Add(testClassChild);
+            await ctx.SaveChangesAsync();
+
             var parentLink = new TestClassLink
             {
                 Id = Guid.NewGuid(),
@@ -41,13 +47,19 @@ namespace TestPostgreSQLRecursiveInclude.Tests
                 ToTestClass = testClassChild
             };
 
+            testClassParent.Parents = new List<TestClassLink>();
             testClassParent.Children = new List<TestClassLink> { parentLink };
             testClass.Parents = new List<TestClassLink> { parentLink };
             testClass.Children = new List<TestClassLink> { childLink };
             testClassChild.Parents = new List<TestClassLink> { childLink };
+            testClassChild.Children = new List<TestClassLink>();
 
-            ctx.TestClasses.Add(testClassParent);
+            ctx.TestClassLinks.Add(parentLink);
+            ctx.TestClassLinks.Add(childLink);
             await ctx.SaveChangesAsync();
+
+            var expected = new List<TestClass> { testClassParent, testClass, testClassChild };
+            var ids = expected.Select(tc => tc.Id);
 
             // Act
             var result = await ctx
@@ -56,12 +68,19 @@ namespace TestPostgreSQLRecursiveInclude.Tests
                     .ThenInclude(tcl => tcl.FromTestClass)
                 .Include(tc => tc.Children)
                     .ThenInclude(tcl => tcl.ToTestClass)
-                .FirstOrDefaultAsync();
+                .Where(tc => ids.Contains(tc.Id))
+                .ToListAsync();
 
             // Assert
-            result.ShouldBeSameAs(testClassParent);
+            result.ShouldBe(expected, ignoreOrder: true);
 
             // Clean up
+            ctx.TestClasses.Remove(testClassParent);
+            ctx.TestClasses.Remove(testClass);
+            ctx.TestClasses.Remove(testClassChild);
+            ctx.TestClassLinks.Remove(parentLink);
+            ctx.TestClassLinks.Remove(childLink);
+            await ctx.SaveChangesAsync();
         }
     }
 }
