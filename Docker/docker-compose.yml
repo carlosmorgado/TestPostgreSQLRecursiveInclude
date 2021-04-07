@@ -1,0 +1,7 @@
+db:
+    build: .
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: MySuperSecretPassword!
+    ports:
+        - 5432:5432
